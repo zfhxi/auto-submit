@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from urllib3.exceptions import InsecureRequestWarning
 
 # debug模式
-filename = './config.yml' if len(sys.argv) <= 1 else sys.argv[1]
+filename = './myconfig.yml' if len(sys.argv) <= 1 else sys.argv[1]
 TEST = 1 if len(sys.argv) <= 2 else sys.argv[2]
 debug = False
 if debug:
@@ -50,12 +50,14 @@ def getCpdailyApis(user):
             params = {
                 'ids': one['id']
             }
+            headers={
+                'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36'
+            }
             # res = requests.get(url='https://www.cpdaily.com/v6/config/guest/tenant/info', params=params,
             #                    verify=not debug)
-            res = requests.get(url='https://mobile.campushoy.com/v6/config/guest/tenant/info', params=params,
-                               verify=not debug)
+            res = requests.get(url='https://mobile.campushoy.com/v6/config/guest/tenant/info', headers=headers,params=params, verify=not debug)
             data = res.json()['data'][0]
-            joinType = data['joinType']
+            # joinType = data['joinType']
             idsUrl = data['idsUrl']
             ampUrl = data['ampUrl']
             if 'campusphere' in ampUrl or 'cpdaily' in ampUrl:
