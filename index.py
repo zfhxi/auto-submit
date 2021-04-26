@@ -2,14 +2,18 @@ from __future__ import unicode_literals
 import sys
 import requests
 import json
-import yaml
 import oss2
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from urllib3.exceptions import InsecureRequestWarning
 
+from bs4 import BeautifulSoup
+import re
+
+from Utils import Utils
+
 # debug模式
-filename = './myconfig.yml' if len(sys.argv) <= 1 else sys.argv[1]
+filename = './config_dev.yml' if len(sys.argv) <= 1 else sys.argv[1]
 TEST = 1 if len(sys.argv) <= 2 else sys.argv[2]
 debug = False
 if debug:
@@ -18,44 +22,28 @@ if debug:
 print('Your config is: {}'.format(filename))
 print('TEST mode is {}'.format(TEST))
 
-
-# 读取yml配置
-def getYmlConfig(yaml_file='config.yml'):
-    file = open(yaml_file, 'r', encoding="utf-8")
-    file_data = file.read()
-    file.close()
-    config = yaml.load(file_data, Loader=yaml.FullLoader)
-    return dict(config)
-
-
 # 全局配置
-config = getYmlConfig(yaml_file=filename)
+config = Utils.getYmlConfig(yaml_file=filename)
 
 
 # 获取今日校园api
 def getCpdailyApis(user):
     apis = {}
     user = user['user']
-    # schools = requests.get(
-    #     url='https://www.cpdaily.com/v6/config/guest/tenant/list', verify=not debug).json()['data']
     ret = requests.get(url='https://static.campushoy.com/apicache/tenantListSort').json()['data']
     schools = [j for i in ret for j in i['datas']]
     flag = True
     for one in schools:
         if one['name'] == user['school']:
-            # if one['joinType'] == 'NONE':
-            #     log(user['school'] + ' 未加入今日校园')
-            #     sys.exit(-1)
             flag = False
             params = {
                 'ids': one['id']
             }
-            headers={
-                'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36'
             }
-            # res = requests.get(url='https://www.cpdaily.com/v6/config/guest/tenant/info', params=params,
-            #                    verify=not debug)
-            res = requests.get(url='https://mobile.campushoy.com/v6/config/guest/tenant/info', headers=headers,params=params, verify=not debug)
+            res = requests.get(url='https://mobile.campushoy.com/v6/config/guest/tenant/info', headers=headers,
+                               params=params, verify=not debug)
             data = res.json()['data'][0]
             # joinType = data['joinType']
             idsUrl = data['idsUrl']
@@ -102,31 +90,62 @@ def log(content):
 # 登陆并返回session
 def getSession(user, loginUrl):
     user = user['user']
-    params = {
-        'login_url': loginUrl,
-        # 保证学工号和密码正确下面两项就不需要配置
-        'needcaptcha_url': '',
-        'captcha_url': '',
-        'username': user['username'],
-        'password': user['password']
-    }
 
-    cookies = {}
-    # 借助上一个项目开放出来的登陆API，模拟登陆
-    res = requests.post(config['login']['api'], params, verify=not debug)
-    cookieStr = str(res.json()['cookies'])
-    log(cookieStr)
-    if cookieStr == 'None':
-        log(res.json())
-        return None
+    mysession = requests.session()
+    # 爬虫获得表单隐藏input属性
+    html = mysession.get(loginUrl, verify=False).text
+    soup = BeautifulSoup(html, 'lxml')
+    form = soup.select('#casLoginForm')
+    if (len(form) == 0):
+        raise Exception('出错啦！网页中没有找到casLoginForm')
+    # 填充数据
+    params = {}
+    form = soup.select('input')
+    for item in form:
+        if None != item.get('name') and len(item.get('name')) > 0:
+            if item.get('name') != 'rememberMe':
+                params[item.get('name')] = '' if None == item.get('value') else item.get('value')
 
-    # 解析cookie
-    for line in cookieStr.split(';'):
-        name, value = line.strip().split('=', 1)
-        cookies[name] = value
-    session = requests.session()
-    session.cookies = requests.utils.cookiejar_from_dict(cookies)
-    return session
+    # 是否有加密公钥
+    pwd_key = soup.select('#pwdDefaultEncryptSalt')
+    try:
+        if len(pwd_key) != 0:
+            pwd_key = pwd_key[0].attrs['value']
+        else:
+            pattern = re.compile('var\s*?pwdDefaultEncryptSalt\s*?=\s*?"(.*?)"')
+            pwd_key = pattern.findall(html)[0]
+    except:
+        pwd_key = ''
+
+    params['username'] = user['username']
+    params['password'] = user['password'] if len(pwd_key) == 0 else Utils.encryptAES(user['password'], pwd_key)
+    # 检查是否需要验证码
+    if len(soup.select('#captchaResponse')) != 0:
+        thost = re.findall('\w{4,5}\:\/\/.*?\/', loginUrl)[0]
+        imgUrl = thost + 'authserver/captcha.html'
+        code = Utils.getCodeFromImg(res=mysession, imgUrl=imgUrl, secret_dict={'id': config['login']['SecretId'],
+                                                                               'key': config['login']['SecretKey']})
+        params['captchaResponse'] = code
+
+    data = mysession.post(loginUrl, params=params, allow_redirects=False)
+
+    # 如果等于302强制跳转，代表登陆成功
+    cookie_jar = None
+    if data.status_code == 302:
+        jump_url = data.headers['Location']
+        mysession.post(jump_url, verify=False)
+        cookie_jar = mysession.cookies
+    elif data.status_code == 200:
+        data = data.text
+        soup = BeautifulSoup(data, 'lxml')
+        msg = soup.select('#msg')[0].get_text()
+        raise Exception(msg)
+    else:
+        raise Exception('教务系统出现了问题啦！返回状态码：' + str(data.status_code))
+
+    new_session = requests.session()
+    new_session.cookies = cookie_jar
+    return new_session
 
 
 # 查询表单
@@ -167,8 +186,9 @@ def queryForm(session, apis):
 
     form = res.json()['datas']['rows']
     required_form = list(filter(lambda x: x['isRequired'] == 1, form))
-    with open('./required_selected.json', 'w') as f:
-        f.write(json.dumps(required_form,ensure_ascii=False))
+    if debug:
+        with open('./required_selected.json', 'w') as f:
+            f.write(json.dumps(required_form, ensure_ascii=False))
     return {'collectWid': collectWid, 'formWid': formWid, 'schoolTaskWid': schoolTaskWid, 'form': required_form}
 
 
@@ -291,6 +311,7 @@ def InfoSubmit(msg, send=None):
 
 
 def main_handler(event, context):
+    ret_val = True
     try:
         for user in config['users']:
             log('当前用户：' + str(user['user']['username']))
@@ -318,27 +339,35 @@ def main_handler(event, context):
                 if msg == 'SUCCESS':
                     log('自动提交成功！')
                     InfoSubmit('自动提交成功！', user['user']['email'])
+                    ret_val = True
                 elif msg == '该收集已填写无需再次填写':
                     log('今日已提交！')
                     InfoSubmit('今日已提交！')
+                    sys.exit(-1)
                 else:
                     log('自动提交失败。。。')
                     log('错误是' + msg)
                     InfoSubmit('自动提交失败！错误是' + msg, user['user']['email'])
-                    sys.exit(-1)
+                    ret_val = False
+                    break
+
             else:
                 log('模拟登陆失败。。。')
                 log('原因可能是学号或密码错误，请检查配置后，重启脚本。。。')
-                sys.exit(-1)
+                ret_val = False
+                break
     except Exception as e:
         InfoSubmit("出现问题了！" + str(e))
-        raise e
-    else:
-        return 'success'
+        ret_val = False
+    return ret_val
 
 
-# 配合Windows计划任务等使用
 if __name__ == '__main__':
-    print(main_handler({}, {}))
     # for user in config['users']:
     #     log(getCpdailyApis(user))
+    for i in range(5):
+        if main_handler({},{}):
+            print('\n!!!提交失败。\n')
+            break
+        else:
+            print(f'\n!!!第{i}次提交失败。\n')
