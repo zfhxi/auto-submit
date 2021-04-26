@@ -1,0 +1,67 @@
+#登陆相关配置
+login:
+  #开放的模拟登陆api服务器地址
+  api: "http://www.zimo.wiki:8080/wisedu-unified-login-api-v1.0/api/login"
+#用户组配置
+users:
+  #单个用户配置
+  - user:
+      #username 学号或者工号
+      username: ''
+      #password 密码
+      password: ''
+      #address 地址，定位信息
+      address: 中国重庆市沙坪坝区大学城南路
+      #email 接受通知消息的邮箱
+      email: xxx@qq.com
+      #school 学校全称
+      school: 重庆大学
+  #多用户配置，将下面的注释去掉即可，如果有表单内容有图片，不建议使用多用户配置
+#  - user:
+#      #username 学号或者工号
+#      username: 161105024
+#      #password 密码
+#      password: 161105024
+#      #address 地址
+#      address: 中国四川省成都市金牛区一环路北1段-129号-附9号
+#      #email 接受通知消息的邮箱
+#      email: 461009747@qq.com
+#      school: 宜宾学院
+#今日校园相关配置
+#'''
+cpdaily:
+  #表单组默认选项配置
+  defaults:
+    #表单默认选项配置，按顺序，注意，只有标必填项的才处理
+    - default:
+        #表单项类型，对应今日校园接口返回的fieldType字段，1代表文本，2代表单选，3代表多选，4代表图片
+        type: 2
+        #表单项标题
+        title: 今日体温是否正常（腋下体温≥37.3℃为异常）
+        #表单项默认值
+        value: 正常
+    - default:
+        type: 2
+        title: 今日有无咳嗽、乏力、鼻塞、流涕、咽痛、肌痛、腹泻等症状（可多选）
+        value: 无上述症状
+    - default:
+        type: 2
+        title: 今日健康档案信息与前一次填报时是否有变化 (如今日健康档案相关信息有变化，则需填写下面对应信息变化的题项，如无变化，则不填写。)
+        value: 无变化
+    - default:
+        type: 2
+        title: 我已如实回答上述问题
+        value: 是
+#'''
+
+#'''
+Info:
+  ServerChan: # 填写Server酱的SCKEY
+  Qsmg: # 填写Qsmg酱的SCKEY
+  Email:
+    enable: true
+    server: smtp.exmail.qq.com # 填写邮件的smtp服务器
+    port: 465 # 填写邮件服务器的端口号
+    account: '' # 邮件服务器登录用户名
+    password: '' # 邮件服务器登录密码
+#'''
