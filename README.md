@@ -1,6 +1,7 @@
 # auto-submit(Deprecated)
 
-改仓库已停止维护，仅作留恋。
+改仓库已停止维护，仅作怀恋。
+
 原仓库参见[auto-submit项目](https://github.com/ZimoLoveShuang/auto-submit)
 
 # 快速上手
